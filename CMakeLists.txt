@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.0)
+cmake_minimum_required(VERSION 3.22.1)
 
 set(PICO_BOARD pico)
 set(PICO_PLATFORM rp2040)
