@@ -6,7 +6,6 @@
 
 #include <chrono>
 #include <driver/gpio.h>
-#include <esp_timer.h>
 #include <thread>
 
 namespace {
@@ -71,52 +70,68 @@ auto Driver::isBusHigh() const -> bool {
     return gpio_get_level(static_cast<gpio_num_t>(m_rxPin)) == 1;
 }
 
-auto Driver::readBit() const -> std::optional<BitType> {
-    waitBusHigh();
+auto Driver::waitStartBit() const -> void {
+    bool isStarted = false;
 
-    auto const pulseStartTime = esp_timer_get_time();
+    while (not isStarted) {
+        waitBusHigh();
+        auto const pulseStartTime = std::chrono::high_resolution_clock::now();
+
+        waitBusLow();
+        auto const pulseStopTime = std::chrono::high_resolution_clock::now();
+
+        auto const pulseTimeDelta = pulseStopTime - pulseStartTime;
+        auto const pulseWidth     = std::chrono::duration_cast<std::chrono::microseconds>(pulseTimeDelta).count();
+
+        if (pulseWidth >= START_BIT_MIN_PULSE_WIDTH and pulseWidth <= START_BIT_MAX_PULSE_WIDTH) {
+            isStarted = true;
+        }
+
+        std::this_thread::sleep_for(std::chrono::microseconds(1));
+    }
+}
+
+auto Driver::readBit() const -> std::optional<Bit> {
+    waitBusHigh();
+    auto const pulseStartTime = std::chrono::high_resolution_clock::now();
 
     waitBusLow();
+    auto const pulseStopTime = std::chrono::high_resolution_clock::now();
 
-    auto const pulseStopTime = esp_timer_get_time();
-    auto const pulseWidth    = pulseStopTime - pulseStartTime;
-
-    if (pulseWidth >= START_BIT_MIN_PULSE_WIDTH and pulseWidth <= START_BIT_MAX_PULSE_WIDTH) {
-        return BitType::START_BIT;
-    }
+    auto const pulseTimeDelta = pulseStopTime - pulseStartTime;
+    auto const pulseWidth     = std::chrono::duration_cast<std::chrono::microseconds>(pulseTimeDelta).count();
 
     if (pulseWidth >= BIT_0_MIN_PULSE_WIDTH and pulseWidth <= BIT_0_MAX_PULSE_WIDTH) {
-        return BitType::BIT_0;
+        return 0;
     }
-
     if (pulseWidth >= BIT_1_MIN_PULSE_WIDTH and pulseWidth <= BIT_1_MAX_PULSE_WIDTH) {
-        return BitType::BIT_1;
+        return 1;
     }
 
     return std::nullopt;
 }
 
-auto Driver::writeBit(BitType const value) const -> void {
+auto Driver::writeBit(Bit const value) const -> void {
     gpio_set_level(static_cast<gpio_num_t>(m_txPin), 1);
 
-    auto const startTime  = esp_timer_get_time();
     bool isPulseCompleted = false;
 
+    auto const pulseStartTime = std::chrono::high_resolution_clock::now();
+
     while (not isPulseCompleted) {
-        auto const currentTime = esp_timer_get_time();
-        auto const pulseWidth  = currentTime - startTime;
-
-        if (value == BitType::START_BIT and pulseWidth >= START_BIT_PULSE_WIDTH) {
-            isPulseCompleted = true;
-        }
-        if (value == BitType::BIT_0 and pulseWidth >= BIT_0_PULSE_WIDTH) {
-            isPulseCompleted = true;
-        }
-        if (value == BitType::BIT_1 and pulseWidth >= BIT_1_PULSE_WIDTH) {
-            isPulseCompleted = true;
-        }
-
         std::this_thread::sleep_for(std::chrono::microseconds(1));
+
+        auto const currentTime = std::chrono::high_resolution_clock::now();
+
+        auto const pulseTimeDelta = currentTime - pulseStartTime;
+        auto const pulseWidth     = std::chrono::duration_cast<std::chrono::microseconds>(pulseTimeDelta).count();
+
+        if (value == 0 and pulseWidth >= BIT_0_PULSE_WIDTH) {
+            isPulseCompleted = true;
+        }
+        if (value == 1 and pulseWidth >= BIT_1_PULSE_WIDTH) {
+            isPulseCompleted = true;
+        }
     }
 
     gpio_set_level(static_cast<gpio_num_t>(m_txPin), 0);

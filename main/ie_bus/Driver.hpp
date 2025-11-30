@@ -8,18 +8,13 @@
 #include <optional>
 
 
-enum class BitType {
-    BIT_0     = 0,
-    BIT_1     = 1,
-    START_BIT = 2,
-};
-
 /**
  * @class Driver
  * IEBus Driver
  */
 class Driver {
 public:
+    using Bit = bool;
     using Pin = std::uint8_t;
 
 public:
@@ -30,7 +25,6 @@ public:
      * Enable IEBus transmitter
      */
     auto enable() const -> void;
-
     /**
      * Disable IEBus transmitter
      */
@@ -42,13 +36,11 @@ public:
      * @return bool
      */
     [[nodiscard]] auto isEnabled() const -> bool;
-
     /**
      * IEBus is low
      * @return bool
      */
     [[nodiscard]] auto isBusLow() const -> bool;
-
     /**
      * IEBus is high
      * @return bool
@@ -57,26 +49,31 @@ public:
 
 public:
     /**
+     * Wait until start bit
+     */
+    auto waitStartBit() const -> void;
+
+public:
+    /**
      * Read single bit from the IEBus
      * Variants: Start Bit, Bit 0, Bit 1
      * If the pulse duration does not match the specified ones, std::nullopt is returned.
      * @return Optional Bit Type
      */
-    [[nodiscard]] auto readBit() const -> std::optional<BitType>;
+    [[nodiscard]] auto readBit() const -> std::optional<Bit>;
 
 public:
     /**
-     * Write signel bit to the IEBus
+     * Write single bit to the IEBus
      * @param value Type of bit
      */
-    auto writeBit(BitType value) const -> void;
+    auto writeBit(Bit value) const -> void;
 
 private:
     /**
      * Wait until the IEBus logic level is low
      */
     auto waitBusLow() const -> void;
-
     /**
      * Wait until the IEBus logic level is high
      */

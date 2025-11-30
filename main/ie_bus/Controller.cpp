@@ -19,14 +19,10 @@ auto Controller::isEnabled() const -> bool {
     return m_driver.isEnabled();
 }
 
-auto Controller::readMessage() const -> std::optional<Message> {
-    if (auto const isStartBit = readStartBit(); not isStartBit) {
-        return std::nullopt;
-    }
-
+auto Controller::readMessage() const -> std::expected<Message, MessageError> {
     Message message{};
 
-    auto readField = [this](auto& field, std::size_t const bits) {
+    auto readField = [&](auto& field, std::size_t const bits) {
         auto const data = readData(bits);
         if (not data) {
             return false;
@@ -37,70 +33,58 @@ auto Controller::readMessage() const -> std::optional<Message> {
 
     auto handleAck = [&] { return not message.isBroadcast and message.slave == m_address ? writeAck() : skipAck(); };
 
+    m_driver.waitStartBit();
+
     if (not readField(message.isBroadcast, 1)) {
-        return std::nullopt;
+        return std::unexpected(MessageError::BROADCAST_BIT_READ_ERROR);
     }
 
     if (not readField(message.master, 12)) {
-        return std::nullopt;
+        return std::unexpected(MessageError::MASTER_ADDRESS_READ_ERROR);
     }
 
     if (not readField(message.slave, 12)) {
-        return std::nullopt;
+        return std::unexpected(MessageError::SLAVE_ADDRESS_READ_ERROR);
     }
     if (not handleAck()) {
-        return std::nullopt;
+        return std::unexpected(MessageError::ACKNOWLEDGE_ERROR);
     }
 
     if (not readField(message.control, 4)) {
-        return std::nullopt;
+        return std::unexpected(MessageError::CONTROL_DATA_READ_ERROR);
     }
     if (not handleAck()) {
-        return std::nullopt;
+        return std::unexpected(MessageError::ACKNOWLEDGE_ERROR);
     }
 
     if (not readField(message.dataLength, 8)) {
-        return std::nullopt;
+        return std::unexpected(MessageError::DATA_LENGTH_READ_ERROR);
     }
     if (not handleAck()) {
-        return std::nullopt;
+        return std::unexpected(MessageError::ACKNOWLEDGE_ERROR);
     }
 
     for (std::size_t i = 0; i < message.dataLength; ++i) {
         if (not readField(message.data[i], 8)) {
-            return std::nullopt;
+            return std::unexpected(MessageError::DATA_READ_ERROR);
         }
         if (not handleAck()) {
-            return std::nullopt;
+            return std::unexpected(MessageError::ACKNOWLEDGE_ERROR);
         }
     }
 
     return message;
 }
 
-auto Controller::readStartBit() const -> bool {
-    auto const bit = m_driver.readBit();
-    if (not bit) {
-        return false;
-    }
-    if (bit != BitType::START_BIT) {
-        return false;
-    }
-    return true;
-}
-
 auto Controller::readBroadcastBit() const -> std::expected<bool, MessageError> {
-    auto const bit = m_driver.readBit();
-    if (not bit) {
-        return std::unexpected(MessageError::BUS_READ_ERROR);
-    }
-    if (bit == BitType::BIT_0) {
-        return true;
-    }
-    if (bit == BitType::BIT_1) {
+    auto const optionalBit = m_driver.readBit();
+    if (not optionalBit) {
         return false;
     }
-    return std::unexpected(MessageError::BIT_SEQUENCE_ERROR);
+
+    auto const bit = optionalBit.value();
+
+    return bit;
 }
 
 auto Controller::readData(std::size_t const bitsCount) const -> std::expected<std::uint32_t, MessageError> {
@@ -112,20 +96,15 @@ auto Controller::readData(std::size_t const bitsCount) const -> std::expected<st
     std::uint8_t parity = 0;
 
     for (std::size_t i = 0; i < bitsCount; ++i) {
-        auto const bit = m_driver.readBit();
-        if (not bit) {
+        auto const optionalBit = m_driver.readBit();
+        if (not optionalBit) {
             return std::unexpected(MessageError::BUS_READ_ERROR);
         }
-        if (bit != BitType::BIT_0 and bit != BitType::BIT_1) {
-            return std::unexpected(MessageError::BIT_SEQUENCE_ERROR);
-        }
-        if (bit == BitType::BIT_0) {
-            data = data << 1 | 0;
-        }
-        if (bit == BitType::BIT_1) {
-            data = data << 1 | 1;
-            ++parity;
-        }
+
+        auto const bit = optionalBit.value();
+
+        data = data << 1 | bit;
+        parity += bit;
     }
 
     if (not checkParity(parity)) {
@@ -136,44 +115,36 @@ auto Controller::readData(std::size_t const bitsCount) const -> std::expected<st
 }
 
 auto Controller::writeAck() const -> bool {
-    auto const bit = m_driver.readBit();
-    if (not bit) {
+    auto const optionalBit = m_driver.readBit();
+    if (not optionalBit) {
         return false;
     }
-    if (bit == BitType::BIT_0) {
-        return true;
+
+    auto const bit = optionalBit.value();
+
+    if (bit == 1) {
+        m_driver.writeBit(0);
     }
-    if (bit == BitType::BIT_1) {
-        m_driver.writeBit(BitType::BIT_0);
-        return true;
-    }
-    return false;
+
+    return true;
 }
 
 auto Controller::skipAck() const -> bool {
-    auto const bit = m_driver.readBit();
-    if (not bit) {
+    auto const optionalBit = m_driver.readBit();
+    if (not optionalBit) {
         return false;
     }
-    if (bit == BitType::BIT_0) {
-        return true;
-    }
-    if (bit == BitType::BIT_1) {
-        return true;
-    }
-    return false;
+
+    return true;
 }
 
 auto Controller::checkParity(std::uint8_t const parity) const -> bool {
-    auto const bit = m_driver.readBit();
-    if (not bit) {
+    auto const optionalBit = m_driver.readBit();
+    if (not optionalBit) {
         return false;
     }
-    if (bit == BitType::BIT_0) {
-        return parity % 2 != 0;
-    }
-    if (bit == BitType::BIT_1) {
-        return parity % 2 != 1;
-    }
-    return false;
+
+    auto const bit = optionalBit.value();
+
+    return parity % 2 == bit;
 }
