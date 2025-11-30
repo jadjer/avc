@@ -4,21 +4,31 @@
 
 #include "Driver.hpp"
 
-#include <chrono>
 #include <driver/gpio.h>
-#include <thread>
+#include <esp_log.h>
+#include <esp_rom_sys.h>
+#include <esp_timer.h>
 
 namespace {
-    auto constexpr START_BIT_PULSE_WIDTH     = 170;
-    auto constexpr BIT_0_PULSE_WIDTH         = 33;
-    auto constexpr BIT_1_PULSE_WIDTH         = 20;
+    auto constexpr TAG = "IEBusDevice";
+
     auto constexpr BIT_PULSE_WIDTH_THRESHOLD = 5;
+
+    auto constexpr START_BIT_FRAME_WIDTH = 190;
+
+    auto constexpr START_BIT_PULSE_WIDTH     = 170;
     auto constexpr START_BIT_MIN_PULSE_WIDTH = START_BIT_PULSE_WIDTH - BIT_PULSE_WIDTH_THRESHOLD;
     auto constexpr START_BIT_MAX_PULSE_WIDTH = START_BIT_PULSE_WIDTH + BIT_PULSE_WIDTH_THRESHOLD;
-    auto constexpr BIT_0_MIN_PULSE_WIDTH     = BIT_0_PULSE_WIDTH - BIT_PULSE_WIDTH_THRESHOLD;
-    auto constexpr BIT_0_MAX_PULSE_WIDTH     = BIT_0_PULSE_WIDTH + BIT_PULSE_WIDTH_THRESHOLD;
-    auto constexpr BIT_1_MIN_PULSE_WIDTH     = BIT_1_PULSE_WIDTH - BIT_PULSE_WIDTH_THRESHOLD;
-    auto constexpr BIT_1_MAX_PULSE_WIDTH     = BIT_1_PULSE_WIDTH + BIT_PULSE_WIDTH_THRESHOLD;
+
+    auto constexpr NORMAL_BIT_FRAME_WIDTH = 39;
+
+    auto constexpr BIT_0_PULSE_WIDTH     = 33;
+    auto constexpr BIT_0_MIN_PULSE_WIDTH = BIT_0_PULSE_WIDTH - BIT_PULSE_WIDTH_THRESHOLD;
+    auto constexpr BIT_0_MAX_PULSE_WIDTH = BIT_0_PULSE_WIDTH + BIT_PULSE_WIDTH_THRESHOLD;
+
+    auto constexpr BIT_1_PULSE_WIDTH     = 20;
+    auto constexpr BIT_1_MIN_PULSE_WIDTH = BIT_1_PULSE_WIDTH - BIT_PULSE_WIDTH_THRESHOLD;
+    auto constexpr BIT_1_MAX_PULSE_WIDTH = BIT_1_PULSE_WIDTH + BIT_PULSE_WIDTH_THRESHOLD;
 } // namespace
 
 Driver::Driver(Pin const rx, Pin const tx, Pin const enable) noexcept : m_rxPin(rx), m_txPin(tx), m_enablePin(enable) {
@@ -71,80 +81,66 @@ auto Driver::isBusHigh() const -> bool {
 }
 
 auto Driver::waitStartBit() const -> void {
-    bool isStarted = false;
-
-    while (not isStarted) {
+    while (true) {
         waitBusHigh();
-        auto const pulseStartTime = std::chrono::high_resolution_clock::now();
+        auto const pulseStartTime = esp_timer_get_time();
 
         waitBusLow();
-        auto const pulseStopTime = std::chrono::high_resolution_clock::now();
+        auto const pulseStopTime = esp_timer_get_time();
 
-        auto const pulseTimeDelta = pulseStopTime - pulseStartTime;
-        auto const pulseWidth     = std::chrono::duration_cast<std::chrono::microseconds>(pulseTimeDelta).count();
+        auto const pulseWidth         = pulseStopTime - pulseStartTime;
+        auto const remainingFrameTime = START_BIT_FRAME_WIDTH - pulseWidth;
 
         if (pulseWidth >= START_BIT_MIN_PULSE_WIDTH and pulseWidth <= START_BIT_MAX_PULSE_WIDTH) {
-            isStarted = true;
+            esp_rom_delay_us(remainingFrameTime);
+            return;
         }
-
-        std::this_thread::sleep_for(std::chrono::microseconds(1));
     }
 }
 
 auto Driver::readBit() const -> std::optional<Bit> {
     waitBusHigh();
-    auto const pulseStartTime = std::chrono::high_resolution_clock::now();
+    auto const pulseStartTime = esp_timer_get_time();
 
     waitBusLow();
-    auto const pulseStopTime = std::chrono::high_resolution_clock::now();
+    auto const pulseStopTime = esp_timer_get_time();
 
-    auto const pulseTimeDelta = pulseStopTime - pulseStartTime;
-    auto const pulseWidth     = std::chrono::duration_cast<std::chrono::microseconds>(pulseTimeDelta).count();
+    auto const pulseWidth         = pulseStopTime - pulseStartTime;
+    auto const remainingFrameTime = NORMAL_BIT_FRAME_WIDTH - pulseWidth;
 
     if (pulseWidth >= BIT_0_MIN_PULSE_WIDTH and pulseWidth <= BIT_0_MAX_PULSE_WIDTH) {
+        esp_rom_delay_us(remainingFrameTime);
         return 0;
     }
     if (pulseWidth >= BIT_1_MIN_PULSE_WIDTH and pulseWidth <= BIT_1_MAX_PULSE_WIDTH) {
+        esp_rom_delay_us(remainingFrameTime);
         return 1;
     }
+
+    ESP_LOGE(TAG, "Error read bit. Pulse width %d", pulseWidth);
 
     return std::nullopt;
 }
 
 auto Driver::writeBit(Bit const value) const -> void {
+    auto const pulseWidth         = (value == 0) ? BIT_0_PULSE_WIDTH : BIT_1_PULSE_WIDTH;
+    auto const remainingFrameTime = NORMAL_BIT_FRAME_WIDTH - pulseWidth;
+
     gpio_set_level(static_cast<gpio_num_t>(m_txPin), 1);
-
-    bool isPulseCompleted = false;
-
-    auto const pulseStartTime = std::chrono::high_resolution_clock::now();
-
-    while (not isPulseCompleted) {
-        std::this_thread::sleep_for(std::chrono::microseconds(1));
-
-        auto const currentTime = std::chrono::high_resolution_clock::now();
-
-        auto const pulseTimeDelta = currentTime - pulseStartTime;
-        auto const pulseWidth     = std::chrono::duration_cast<std::chrono::microseconds>(pulseTimeDelta).count();
-
-        if (value == 0 and pulseWidth >= BIT_0_PULSE_WIDTH) {
-            isPulseCompleted = true;
-        }
-        if (value == 1 and pulseWidth >= BIT_1_PULSE_WIDTH) {
-            isPulseCompleted = true;
-        }
-    }
+    esp_rom_delay_us(pulseWidth);
 
     gpio_set_level(static_cast<gpio_num_t>(m_txPin), 0);
+    esp_rom_delay_us(remainingFrameTime);
 }
 
 auto Driver::waitBusLow() const -> void {
     while (isBusHigh()) {
-        std::this_thread::sleep_for(std::chrono::microseconds(1));
+        esp_rom_delay_us(1);
     }
 }
 
 auto Driver::waitBusHigh() const -> void {
     while (isBusLow()) {
-        std::this_thread::sleep_for(std::chrono::microseconds(1));
+        esp_rom_delay_us(1);
     }
 }

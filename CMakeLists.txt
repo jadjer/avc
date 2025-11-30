@@ -4,7 +4,7 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 idf_build_set_property(MINIMAL_BUILD ON)
 
-project(avc
+project(SubaruCarlinkAdapter
         VERSION 0.0.1
         DESCRIPTION "Subaru Carlink Adapter"
         HOMEPAGE_URL https://github.com/jadjer/subaru-carlink-adapter

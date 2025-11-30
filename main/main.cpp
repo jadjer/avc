@@ -11,7 +11,7 @@ auto constexpr BUS_RX          = 8;
 auto constexpr BUS_TX          = 3;
 auto constexpr BUS_ENABLE      = 9;
 auto constexpr OUTPUT_ENABLE   = 6;
-auto constexpr BUS_DEVICE_ADDR = 0x997;
+auto constexpr BUS_DEVICE_ADDR = 0x140;
 
 const char* toString(MessageError error) {
     switch (error) {

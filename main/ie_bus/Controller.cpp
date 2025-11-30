@@ -4,6 +4,12 @@
 
 #include "Controller.hpp"
 
+#include <esp_log.h>
+
+namespace {
+    auto constexpr TAG = "IEBusController";
+}
+
 Controller::Controller(Driver::Pin const rx, Driver::Pin const tx, Driver::Pin const enable, Address const address)
     : m_address(address), m_driver(rx, tx, enable) {}
 
@@ -35,9 +41,12 @@ auto Controller::readMessage() const -> std::expected<Message, MessageError> {
 
     m_driver.waitStartBit();
 
-    if (not readField(message.isBroadcast, 1)) {
+    auto const isBroadcast = readBroadcastBit();
+    if (not isBroadcast) {
         return std::unexpected(MessageError::BROADCAST_BIT_READ_ERROR);
     }
+
+    message.isBroadcast = *isBroadcast;
 
     if (not readField(message.master, 12)) {
         return std::unexpected(MessageError::MASTER_ADDRESS_READ_ERROR);
@@ -79,7 +88,8 @@ auto Controller::readMessage() const -> std::expected<Message, MessageError> {
 auto Controller::readBroadcastBit() const -> std::expected<bool, MessageError> {
     auto const optionalBit = m_driver.readBit();
     if (not optionalBit) {
-        return false;
+        ESP_LOGE(TAG, "Read broadcast bit error");
+        return std::unexpected(MessageError::BUS_READ_ERROR);
     }
 
     auto const bit = optionalBit.value();
@@ -89,6 +99,7 @@ auto Controller::readBroadcastBit() const -> std::expected<bool, MessageError> {
 
 auto Controller::readData(std::size_t const bitsCount) const -> std::expected<std::uint32_t, MessageError> {
     if (bitsCount > 32) {
+        ESP_LOGE(TAG, "Bits count greater than 32");
         return std::unexpected(MessageError::BITS_COUNT_ERROR);
     }
 
@@ -98,6 +109,7 @@ auto Controller::readData(std::size_t const bitsCount) const -> std::expected<st
     for (std::size_t i = 0; i < bitsCount; ++i) {
         auto const optionalBit = m_driver.readBit();
         if (not optionalBit) {
+            ESP_LOGE(TAG, "Read bit error");
             return std::unexpected(MessageError::BUS_READ_ERROR);
         }
 
@@ -108,6 +120,7 @@ auto Controller::readData(std::size_t const bitsCount) const -> std::expected<st
     }
 
     if (not checkParity(parity)) {
+        ESP_LOGE(TAG, "Check parity error");
         return std::unexpected(MessageError::BIT_PARITY_ERROR);
     }
 
@@ -141,6 +154,7 @@ auto Controller::skipAck() const -> bool {
 auto Controller::checkParity(std::uint8_t const parity) const -> bool {
     auto const optionalBit = m_driver.readBit();
     if (not optionalBit) {
+        ESP_LOGE(TAG, "Read parity bit error");
         return false;
     }
 
