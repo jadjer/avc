@@ -10,7 +10,6 @@
 #include "Driver.hpp"
 #include "Message.hpp"
 
-using Bit = bool;
 
 enum class MessageError {
     BUS_READ_ERROR,
@@ -19,9 +18,13 @@ enum class MessageError {
     BITS_COUNT_ERROR,
 };
 
+/**
+ * @class Controller
+ * IEBus Controller
+ */
 class Controller {
 public:
-    Controller(Pin rx, Pin tx, Pin enable, Address device);
+    Controller(Driver::Pin rx, Driver::Pin tx, Driver::Pin enable, Address address);
 
 public:
     auto enable() const -> void;
@@ -44,7 +47,7 @@ private:
     [[nodiscard]] auto checkParity(std::uint8_t parity) const -> bool;
 
 private:
-    Address const m_device;
+    Address const m_address;
 
 private:
     Driver m_driver;

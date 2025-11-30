@@ -5,46 +5,81 @@
 #pragma once
 
 #include <cstdint>
-#include <expected>
+#include <optional>
+
 
 enum class BitType {
-    BIT_0     = 0x00,
-    BIT_1     = 0x01,
-    START_BIT = 0x10,
+    BIT_0     = 0,
+    BIT_1     = 1,
+    START_BIT = 2,
 };
 
-enum class ReadError {
-    BIT_TYPE_WRONG,
-};
-
-using Pin  = std::uint8_t;
-using Time = std::uint64_t;
-
+/**
+ * @class Driver
+ * IEBus Driver
+ */
 class Driver {
+public:
+    using Pin = std::uint8_t;
+
 public:
     Driver(Pin rx, Pin tx, Pin enable) noexcept;
 
 public:
+    /**
+     * Enable IEBus transmitter
+     */
     auto enable() const -> void;
 
+    /**
+     * Disable IEBus transmitter
+     */
     auto disable() const -> void;
 
 public:
+    /**
+     * IEBus transmitter enabled
+     * @return bool
+     */
     [[nodiscard]] auto isEnabled() const -> bool;
 
+    /**
+     * IEBus is low
+     * @return bool
+     */
     [[nodiscard]] auto isBusLow() const -> bool;
 
+    /**
+     * IEBus is high
+     * @return bool
+     */
     [[nodiscard]] auto isBusHigh() const -> bool;
 
 public:
-    [[nodiscard]] auto readBit() const -> std::expected<BitType, ReadError>;
+    /**
+     * Read single bit from the IEBus
+     * Variants: Start Bit, Bit 0, Bit 1
+     * If the pulse duration does not match the specified ones, std::nullopt is returned.
+     * @return Optional Bit Type
+     */
+    [[nodiscard]] auto readBit() const -> std::optional<BitType>;
 
 public:
+    /**
+     * Write signel bit to the IEBus
+     * @param value Type of bit
+     */
     auto writeBit(BitType value) const -> void;
 
 private:
+    /**
+     * Wait until the IEBus logic level is low
+     */
     auto waitBusLow() const -> void;
 
+    /**
+     * Wait until the IEBus logic level is high
+     */
     auto waitBusHigh() const -> void;
 
 private:

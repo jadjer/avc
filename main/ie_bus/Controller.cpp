@@ -4,8 +4,8 @@
 
 #include "Controller.hpp"
 
-Controller::Controller(Pin const rx, Pin const tx, Pin const enable, Address const device)
-    : m_device(device), m_driver(rx, tx, enable) {}
+Controller::Controller(Driver::Pin const rx, Driver::Pin const tx, Driver::Pin const enable, Address const address)
+    : m_address(address), m_driver(rx, tx, enable) {}
 
 auto Controller::enable() const -> void {
     m_driver.enable();
@@ -20,22 +20,14 @@ auto Controller::isEnabled() const -> bool {
 }
 
 auto Controller::readMessage() const -> std::optional<Message> {
-    auto const isStartBit = readStartBit();
-    if (not isStartBit) {
-        return std::nullopt;
-    }
-
-    auto const isBroadcast = readBroadcastBit();
-    if (not isBroadcast) {
+    if (auto const isStartBit = readStartBit(); not isStartBit) {
         return std::nullopt;
     }
 
     Message message{};
-    message.isBroadcast = *isBroadcast;
 
-    // Helper function
     auto readField = [this](auto& field, std::size_t const bits) {
-        auto data = readData(bits);
+        auto const data = readData(bits);
         if (not data) {
             return false;
         }
@@ -43,11 +35,16 @@ auto Controller::readMessage() const -> std::optional<Message> {
         return true;
     };
 
-    auto handleAck = [&]() { return (not message.isBroadcast and message.slave == m_device) ? writeAck() : skipAck(); };
+    auto handleAck = [&] { return not message.isBroadcast and message.slave == m_address ? writeAck() : skipAck(); };
+
+    if (not readField(message.isBroadcast, 1)) {
+        return std::nullopt;
+    }
 
     if (not readField(message.master, 12)) {
         return std::nullopt;
     }
+
     if (not readField(message.slave, 12)) {
         return std::nullopt;
     }
@@ -123,10 +120,10 @@ auto Controller::readData(std::size_t const bitsCount) const -> std::expected<st
             return std::unexpected(MessageError::BIT_SEQUENCE_ERROR);
         }
         if (bit == BitType::BIT_0) {
-            data = (data << 1) | 0;
+            data = data << 1 | 0;
         }
         if (bit == BitType::BIT_1) {
-            data = (data << 1) | 1;
+            data = data << 1 | 1;
             ++parity;
         }
     }
@@ -173,10 +170,10 @@ auto Controller::checkParity(std::uint8_t const parity) const -> bool {
         return false;
     }
     if (bit == BitType::BIT_0) {
-        return (parity % 2) != 0;
+        return parity % 2 != 0;
     }
     if (bit == BitType::BIT_1) {
-        return (parity % 2) != 1;
+        return parity % 2 != 1;
     }
     return false;
 }

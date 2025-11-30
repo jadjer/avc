@@ -5,9 +5,9 @@
 #include "Driver.hpp"
 
 #include <chrono>
-#include <thread>
 #include <driver/gpio.h>
 #include <esp_timer.h>
+#include <thread>
 
 namespace {
     auto constexpr START_BIT_PULSE_WIDTH     = 170;
@@ -71,7 +71,7 @@ auto Driver::isBusHigh() const -> bool {
     return gpio_get_level(static_cast<gpio_num_t>(m_rxPin)) == 1;
 }
 
-auto Driver::readBit() const -> std::expected<BitType, ReadError> {
+auto Driver::readBit() const -> std::optional<BitType> {
     waitBusHigh();
 
     auto const pulseStartTime = esp_timer_get_time();
@@ -93,25 +93,28 @@ auto Driver::readBit() const -> std::expected<BitType, ReadError> {
         return BitType::BIT_1;
     }
 
-    return std::unexpected(ReadError::BIT_TYPE_WRONG);
+    return std::nullopt;
 }
 
-auto Driver::writeBit(BitType bit) const -> void {
+auto Driver::writeBit(BitType const value) const -> void {
     gpio_set_level(static_cast<gpio_num_t>(m_txPin), 1);
 
-    auto const startTime = esp_timer_get_time();
+    auto const startTime  = esp_timer_get_time();
+    bool isPulseCompleted = false;
 
-    while (true) {
+    while (not isPulseCompleted) {
         auto const currentTime = esp_timer_get_time();
-        auto const pulseWidth = currentTime - startTime;
+        auto const pulseWidth  = currentTime - startTime;
 
-        if (bit == BitType::START_BIT and pulseWidth >= START_BIT_PULSE_WIDTH) {
-            break;
+        if (value == BitType::START_BIT and pulseWidth >= START_BIT_PULSE_WIDTH) {
+            isPulseCompleted = true;
         }
-        if (bit == BitType::BIT_0 and pulseWidth >= BIT_0_PULSE_WIDTH) {
-            break;
+        if (value == BitType::BIT_0 and pulseWidth >= BIT_0_PULSE_WIDTH) {
+            isPulseCompleted = true;
         }
-        if (bit == BitType::BIT_1 and pulseWidth >= BIT_1_PULSE_WIDTH) {}
+        if (value == BitType::BIT_1 and pulseWidth >= BIT_1_PULSE_WIDTH) {
+            isPulseCompleted = true;
+        }
 
         std::this_thread::sleep_for(std::chrono::microseconds(1));
     }
