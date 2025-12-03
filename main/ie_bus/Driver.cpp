@@ -170,6 +170,15 @@ auto Driver::receiveBits(Size const numBits) const -> Data {
     return result;
 }
 
+auto Driver::receiveAckBit() const -> AcknowledgmentType {
+    auto const ackBit = receiveBit();
+    if (ackBit == 0) {
+        return AcknowledgmentType::ACK;
+    }
+
+    return AcknowledgmentType::NAK;
+}
+
 auto Driver::transmitStartBit() const -> void {
     gpio_set_level(static_cast<gpio_num_t>(m_txPin), 1);
     delayUs(START_BIT_HIGH_US);
@@ -196,17 +205,6 @@ auto Driver::transmitBits(Data const data, Size const numBits) const -> void {
 
         transmitBit(bit);
     }
-}
-
-auto Driver::waitAckBit() const -> AcknowledgmentType {
-    gpio_set_level(static_cast<gpio_num_t>(m_txPin), 0);
-
-    auto const ackBit = receiveBit();
-    if (ackBit == 0) {
-        return AcknowledgmentType::ACK;
-    }
-
-    return AcknowledgmentType::NAK;
 }
 
 auto Driver::sendAckBit(AcknowledgmentType const ack) const -> void {

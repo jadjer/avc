@@ -6,12 +6,13 @@
 
 #include <cstdint>
 
+using Size    = std::size_t;
 using Byte    = std::uint8_t;
 using Address = std::uint16_t;
 
 enum class BroadcastType {
-    BROADCAST = 0,
-    TO_DEVICE = 1,
+    BROADCAST  = 0,
+    FOR_DEVICE = 1,
 };
 
 #pragma pack(push, 1)
@@ -20,7 +21,7 @@ struct Message {
     Address master;
     Address slave;
     Byte control;
-    Byte dataLength;
+    Size dataLength;
     Byte data[32];
 
     // Проверка целостности

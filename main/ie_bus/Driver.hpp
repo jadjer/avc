@@ -78,6 +78,13 @@ public:
      */
     [[nodiscard]] auto receiveBits(Size numBits) const -> Data;
     /**
+     * Wait ack from IEBus
+     * @return Ack value
+     */
+    [[nodiscard]] auto receiveAckBit() const -> AcknowledgmentType;
+
+public:
+    /**
      * Get start bit from IEBus
      * @return
      */
@@ -93,13 +100,6 @@ public:
      * @param numBits data size
      */
     auto transmitBits(Data data, Size numBits) const -> void;
-
-public:
-    /**
-     * Wait ack from IEBus
-     * @return Ack value
-     */
-    [[nodiscard]] auto waitAckBit() const -> AcknowledgmentType;
     /**
      * Send ack to IEBus
      * @param ack ack value

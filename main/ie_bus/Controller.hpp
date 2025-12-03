@@ -5,11 +5,9 @@
 #pragma once
 
 #include <optional>
-#include <thread>
 
 #include "Driver.hpp"
 #include "Message.hpp"
-#include "Queue.hpp"
 
 
 enum class MessageError {
@@ -32,19 +30,9 @@ enum class MessageError {
  * IEBus Controller
  */
 class Controller {
-private:
-    using Thread       = std::thread;
-    using MessageQueue = Queue<Message>;
 
 public:
     Controller(Driver::Pin rx, Driver::Pin tx, Driver::Pin enable, Address address);
-    ~Controller();
-
-public:
-    Controller(Controller const&)                = delete;
-    Controller& operator=(Controller const&)     = delete;
-    Controller(Controller&&) noexcept            = delete;
-    Controller& operator=(Controller&&) noexcept = delete;
 
 public:
     /**
@@ -64,21 +52,17 @@ public:
     [[nodiscard]] auto isEnabled() const -> bool;
 
 public:
-    [[nodiscard]] auto readMessage() const -> std::optional<Message>;
-    [[nodiscard]] auto writeMessage(Message const& message) const -> bool;
-
-public:
     /**
-     * Get message from queue
-     * @return
+     * Read message from IEBus
+     * @return Optional message
      */
-    [[nodiscard]] auto getMessage() -> std::optional<Message>;
-    auto putMessage(Message const& message) -> void;
-
-private:
-    auto loop() -> void;
-
-
+    [[nodiscard]] auto readMessage() const -> std::optional<Message>;
+    /**
+     * Write message to IEBus
+     * @param message Message
+     * @return bool
+     */
+    [[nodiscard]] auto writeMessage(Message const& message) const -> bool;
 
 private:
     /**
@@ -102,10 +86,4 @@ private:
 
 private:
     Driver m_driver;
-    Thread m_processThread;
-    MessageQueue m_receiveQueue;
-    MessageQueue m_transmitQueue;
-
-private:
-    Message m_currentMessage = Message();
 };
